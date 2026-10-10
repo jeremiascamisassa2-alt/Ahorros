@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DúoAhorro - Jeremías & Zahira</title>
+  <meta name="description" content="Plataforma de ahorro y finanzas en pareja para Jeremías y Zahira con sincronización en tiempo real." />
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+    }
+  </script>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <style>
+    body { font-family: 'Plus Jakarta Sans', sans-serif; }
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
+  </style>
+</head>
+<body class="bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 antialiased transition-colors">
+  <div id="root"></div>
+
+  <!-- React 18 & Lucide Icons vía CDN -->
+  <script type="module">
+    import React, { useState, useEffect } from 'https://esm.sh/react@18.3.1';
+    import ReactDOM from 'https://esm.sh/react-dom@18.3.1/client';
+    import {
+      Users, Plus, Coins, TrendingUp, Calendar, CheckCircle2, Edit2, Trash2,
+      Table, BarChart3, PieChart, Scale, ArrowDownRight, ArrowUpRight,
+      Wifi, WifiOff, Bell, Moon, Sun, Download, FileSpreadsheet, FileText,
+      Plane, Sunrise, Home, Shirt, ShieldAlert, Sparkles, X, Save, RefreshCw, AlertTriangle
+    } from 'https://esm.sh/lucide-react@0.344.0';
+
+    // Base de datos Firebase vinculada de Jeremías y Zahira
+    const FIREBASE_RTDB_URL = 'https://chanchito-10e8e-default-rtdb.firebaseio.com/duo_ahorro.json';
+
+    // Metas iniciales en $0 para rellenar
+    const DEFAULT_GOALS = [
+      { id: 'viajes', title: 'Viajes', category: 'viajes', targetAmount: 0, currentAmount: 0, p1Saved: 0, p2Saved: 0, monthlyTarget: 0, deadline: '2026-12-31', color: '#3B82F6' },
+      { id: 'horizonte', title: 'Horizonte', category: 'horizonte', targetAmount: 0, currentAmount: 0, p1Saved: 0, p2Saved: 0, monthlyTarget: 0, deadline: '2027-12-31', color: '#F59E0B' },
+      { id: 'casa', title: 'Cosas para la casa', category: 'casa', targetAmount: 0, currentAmount: 0, p1Saved: 0, p2Saved: 0, monthlyTarget: 0, deadline: '2026-11-30', color: '#10B981' },
+      { id: 'ropa', title: 'Ropa', category: 'ropa', targetAmount: 0, currentAmount: 0, p1Saved: 0, p2Saved: 0, monthlyTarget: 0, deadline: '2026-10-31', color: '#EC4899' },
+      { id: 'emergencia', title: 'Fondo de emergencia', category: 'emergencia', targetAmount: 0, currentAmount: 0, p1Saved: 0, p2Saved: 0, monthlyTarget: 0, deadline: '2026-12-31', color: '#6366F1' },
+    ];
+
+    const DEFAULT_BUDGETS = [
+      { category: 'Salidas y Restaurantes', limit: 0, spent: 0 },
+      { category: 'Supermercado y Comida', limit: 0, spent: 0 },
+      { category: 'Ropa y Calzado', limit: 0, spent: 0 },
+      { category: 'Servicios e Internet', limit: 0, spent: 0 },
+      { category: 'Transporte y Combustible', limit: 0, spent: 0 },
+      { category: 'Entretenimiento y Ocio', limit: 0, spent: 0 },
+    ];
+
+    function App() {
+      const [partner1] = useState('Jeremías');
+      const [partner2] = useState('Zahira');
+      const [activePayer, setActivePayer] = useState('Jeremías');
+      const [activeTab, setActiveTab] = useState('metas');
+      const [darkMode, setDarkMode] = useState(false);
+      const [isOnline, setIsOnline] = useState(navigator.onLine);
+
+      // Estado de datos
+      const [goals, setGoals] = useState(() => {
+        const saved = localStorage.getItem('duo_goals_v3');
+        return saved ? JSON.parse(saved) : DEFAULT_GOALS;
+      });
+
+      const [transactions, setTransactions] = useState(() => {
+        const saved = localStorage.getItem('duo_txs_v3');
+        return saved ? JSON.parse(saved) : [];
+      });
+
+      const [budgets, setBudgets] = useState(() => {
+        const saved = localStorage.getItem('duo_budgets_v3');
+        return saved ? JSON.parse(saved) : DEFAULT_BUDGETS;
+      });
+
+      // Modales
+      const [showSpreadsheet, setShowSpreadsheet] = useState(false);
+      const [showDepositModal, setShowDepositModal] = useState(null);
+      const [showTxModal, setShowTxModal] = useState(false);
+      const [showGoalModal, setShowGoalModal] = useState(null);
+      const [syncStatus, setSyncStatus] = useState('');
+
+      // Sincronizar en LocalStorage y Firebase
+      const saveData = async (newGoals, newTxs, newBudgets) => {
+        localStorage.setItem('duo_goals_v3', JSON.stringify(newGoals));
+        localStorage.setItem('duo_txs_v3', JSON.stringify(newTxs));
+        localStorage.setItem('duo_budgets_v3', JSON.stringify(newBudgets));
+
+        if (navigator.onLine) {
+          try {
+            await fetch(FIREBASE_RTDB_URL, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                goals: newGoals,
+                transactions: newTxs,
+                budgets: newBudgets,
+                updatedAt: new Date().toISOString()
+              }),
+            });
+            setSyncStatus('Sincronizado con chanchito-10e8e');
+            setTimeout(() => setSyncStatus(''), 3000);
+          } catch (e) {
+            console.warn('Error sincronizando con Firebase:', e);
+          }
+        }
+      };
+
+      // Cargar desde Firebase al abrir
+      useEffect(() => {
+        const loadFirebase = async () => {
+          if (!navigator.onLine) return;
+          try {
+            const res = await fetch(FIREBASE_RTDB_URL);
+            if (res.ok) {
+              const data = await res.json();
+              if (data && data.goals) {
+                setGoals(data.goals);
+                setTransactions(data.transactions || []);
+                setBudgets(data.budgets || DEFAULT_BUDGETS);
+                localStorage.setItem('duo_goals_v3', JSON.stringify(data.goals));
+                localStorage.setItem('duo_txs_v3', JSON.stringify(data.transactions || []));
+                localStorage.setItem('duo_budgets_v3', JSON.stringify(data.budgets || DEFAULT_BUDGETS));
+              }
+            }
+          } catch (e) {
+            console.log('Modo local activo:', e);
+          }
+        };
+        loadFirebase();
+
+        window.addEventListener('online', () => setIsOnline(true));
+        window.addEventListener('offline', () => setIsOnline(false));
+      }, []);
+
+      // Modo oscuro
+      useEffect(() => {
+        if (darkMode) document.documentElement.classList.add('dark');
+        else document.documentElement.classList.remove('dark');
+      }, [darkMode]);
+
+      // Métricas globales
+      const totalTarget = goals.reduce((sum, g) => sum + (Number(g.targetAmount) || 0), 0);
+      const totalSaved = goals.reduce((sum, g) => sum + (Number(g.currentAmount) || 0), 0);
+      const p1Total = goals.reduce((sum, g) => sum + (Number(g.p1Saved) || 0), 0);
+      const p2Total = goals.reduce((sum, g) => sum + (Number(g.p2Saved) || 0), 0);
+      const globalPct = totalTarget > 0 ? Math.round((totalSaved / totalTarget) * 100) : 0;
+
+      // Guardar aporte
+      const handleDeposit = (goalId, amount, payer, note) => {
+        const val = parseFloat(amount);
+        if (!val || val <= 0) return;
+
+        const updated = goals.map(g => {
+          if (g.id === goalId) {
+            const p1Add = payer === partner1 ? val : payer === '50/50' ? val / 2 : 0;
+            const p2Add = payer === partner2 ? val : payer === '50/50' ? val / 2 : 0;
+            return {
+              ...g,
+              currentAmount: Number(g.currentAmount) + val,
+              p1Saved: Number(g.p1Saved) + p1Add,
+              p2Saved: Number(g.p2Saved) + p2Add,
+            };
+          }
+          return g;
+        });
+
+        const newTx = {
+          id: Date.now().toString(),
+          type: 'saving',
+          title: note || `Aporte a ${goals.find(g => g.id === goalId)?.title}`,
+          amount: val,
+          payer,
+          date: new Date().toISOString().split('T')[0]
+        };
+
+        const updatedTxs = [newTx, ...transactions];
+        setGoals(updated);
+        setTransactions(updatedTxs);
+        saveData(updated, updatedTxs, budgets);
+        setShowDepositModal(null);
+      };
+
+      // Exportar a CSV / Excel
+      const handleExportCSV = () => {
+        let csv = 'METAS DE AHORRO DE JEREMÍAS Y ZAHIRA\n';
+        csv += 'Meta,Categoría,Objetivo,Ahorrado Total,Jeremías,Zahira,Fecha Límite\n';
+        goals.forEach(g => {
+          csv += `"${g.title}","${g.category}",${g.targetAmount},${g.currentAmount},${g.p1Saved},${g.p2Saved},"${g.deadline}"\n`;
+        });
+        csv += '\nMOVIMIENTOS\nFecha,Concepto,Tipo,Pagador,Monto\n';
+        transactions.forEach(t => {
+          csv += `"${t.date}","${t.title}","${t.type}","${t.payer}",${t.amount}\n`;
+        });
+
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `duo_ahorro_${new Date().toISOString().split('T')[0]}.csv`;
+        a.click();
+      };
+
+      return React.createElement('div', { className: 'min-h-screen flex flex-col font-sans' },
+        // HEADER
+        React.createElement('header', { className: 'sticky top-0 z-40 bg-white/95 dark:bg-neutral-900/95 backdrop-blur border-b border-neutral-200 dark:border-neutral-800' },
+          React.createElement('div', { className: 'max-w-7xl mx-auto px-4 h-16 flex items-center justify-between gap-4' },
+            React.createElement('div', { className: 'flex items-center gap-3' },
+              React.createElement('div', { className: 'w-9 h-9 rounded-xl bg-teal-600 flex items-center justify-center text-white font-bold' },
+                React.createElement(Users, { className: 'w-5 h-5' })
+              ),
+              React.createElement('div', null,
+                React.createElement('span', { className: 'text-lg font-bold tracking-tight text-neutral-900 dark:text-neutral-50' }, 'DúoAhorro'),
+                React.createElement('span', { className: 'hidden sm:inline-block ml-2 text-xs text-neutral-500' }, `${partner1} & ${partner2}`)
+              )
+            ),
+            // TABS
+            React.createElement('nav', { className: 'flex items-center gap-1 text-xs font-medium' },
+              ['metas', 'graficos', 'presupuestos', 'movimientos'].map(tab =>
+                React.createElement('button', {
+                  key: tab,
+                  onClick: () => setActiveTab(tab),
+                  className: `px-3 py-1.5 rounded-lg capitalize transition-colors ${activeTab === tab ? 'bg-neutral-100 dark:bg-neutral-800 font-bold text-neutral-900 dark:text-neutral-50' : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900'}`
+                }, tab === 'graficos' ? 'Balance & Gráficos' : tab)
+              )
+            ),
+            // CONTROLES
+            React.createElement('div', { className: 'flex items-center gap-2' },
+              React.createElement('div', { className: `flex items-center gap-1 px-2.5 py-1 text-xs rounded-lg border ${isOnline ? 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300' : 'border-amber-200 bg-amber-50 text-amber-800'}` },
+                isOnline ? React.createElement(Wifi, { className: 'w-3.5 h-3.5' }) : React.createElement(WifiOff, { className: 'w-3.5 h-3.5' }),
+                React.createElement('span', { className: 'hidden md:inline text-[11px]' }, isOnline ? 'chanchito-10e8e' : 'Offline')
+              ),
+              React.createElement('button', {
+                onClick: () => setDarkMode(!darkMode),
+                className: 'p-2 rounded-lg text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800'
+              }, darkMode ? React.createElement(Sun, { className: 'w-4 h-4' }) : React.createElement(Moon, { className: 'w-4 h-4' })),
+              React.createElement('button', {
+                onClick: handleExportCSV,
+                className: 'px-3 py-1.5 text-xs font-semibold text-white bg-neutral-900 dark:bg-neutral-100 dark:text-neutral-900 rounded-lg flex items-center gap-1.5'
+              }, React.createElement(Download, { className: 'w-3.5 h-3.5' }), React.createElement('span', { className: 'hidden sm:inline' }, 'Exportar'))
+            )
+          )
+        ),
+
+        // NOTIFICACIÓN SYNC
+        syncStatus && React.createElement('div', { className: 'bg-teal-600 text-white text-xs py-1 text-center font-medium' }, syncStatus),
+
+        // CONTENIDO PRINCIPAL
+        React.createElement('main', { className: 'max-w-7xl mx-auto px-4 py-6 flex-1 w-full space-y-6' },
+
+          // TAB METAS
+          activeTab === 'metas' && React.createElement('div', { className: 'space-y-6' },
+            // STRIP SUPERIOR
+            React.createElement('div', { className: 'bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl p-6 shadow-sm' },
+              React.createElement('div', { className: 'flex flex-col sm:flex-row items-start sm:items-center justify-between pb-6 border-b border-neutral-100 dark:border-neutral-800 gap-4' },
+                React.createElement('div', null,
+                  React.createElement('h2', { className: 'text-2xl font-bold tracking-tight text-neutral-900 dark:text-neutral-50' }, `Metas de ${partner1} & ${partner2}`),
+                  React.createElement('p', { className: 'text-xs text-neutral-500 mt-0.5' }, 'Rellenen sus metas, objetivos en pesos y aportes mensuales.')
+                ),
+                React.createElement('div', { className: 'flex flex-wrap gap-2' },
+                  React.createElement('button', {
+                    onClick: () => setShowSpreadsheet(true),
+                    className: 'flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-neutral-800 dark:text-neutral-200 bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 rounded-xl border border-neutral-200 dark:border-neutral-700'
+                  }, React.createElement(Table, { className: 'w-4 h-4 text-teal-600' }), 'Rellenar Planilla de Metas'),
+                  React.createElement('button', {
+                    onClick: () => setShowGoalModal({ title: '', category: 'viajes', targetAmount: 0, currentAmount: 0, p1Saved: 0, p2Saved: 0, monthlyTarget: 0, deadline: '2026-12-31', color: '#3B82F6' }),
+                    className: 'flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-teal-600 hover:bg-teal-700 rounded-xl shadow-sm'
+                  }, React.createElement(Plus, { className: 'w-4 h-4' }), 'Nueva Meta')
+                )
+              ),
+              // METRICAS EN CERO / REALES
+              React.createElement('div', { className: 'grid grid-cols-1 sm:grid-cols-4 gap-6 pt-6' },
+                React.createElement('div', null,
+                  React.createElement('span', { className: 'text-xs text-neutral-500 block' }, 'Total Acumulado en Metas'),
+                  React.createElement('span', { className: 'text-2xl font-bold font-mono' }, `$${totalSaved.toLocaleString('es-AR')}`),
+                  React.createElement('span', { className: 'text-xs text-neutral-400 block' }, totalTarget > 0 ? `Meta: $${totalTarget.toLocaleString('es-AR')}` : 'Sin meta definida')
+                ),
+                React.createElement('div', null,
+                  React.createElement('span', { className: 'text-xs text-neutral-500 block' }, `Aporte ${partner1}`),
+                  React.createElement('span', { className: 'text-2xl font-bold font-mono text-teal-600' }, `$${p1Total.toLocaleString('es-AR')}`),
+                  React.createElement('span', { className: 'text-xs text-neutral-400 block' }, totalSaved > 0 ? `${Math.round((p1Total / totalSaved) * 100)}% del total` : 'Sin aportes')
+                ),
+                React.createElement('div', null,
+                  React.createElement('span', { className: 'text-xs text-neutral-500 block' }, `Aporte ${partner2}`),
+                  React.createElement('span', { className: 'text-2xl font-bold font-mono text-purple-600' }, `$${p2Total.toLocaleString('es-AR')}`),
+                  React.createElement('span', { className: 'text-xs text-neutral-400 block' }, totalSaved > 0 ? `${Math.round((p2Total / totalSaved) * 100)}% del total` : 'Sin aportes')
+                ),
+                React.createElement('div', { className: 'space-y-2' },
+                  React.createElement('div', { className: 'flex justify-between text-xs text-neutral-500' },
+                    React.createElement('span', null, 'Cumplimiento Global'),
+                    React.createElement('span', { className: 'font-mono font-bold' }, `${globalPct}%`)
+                  ),
+                  React.createElement('div', { className: 'w-full h-3 bg-neutral-100 dark:bg-neutral-800 rounded-full overflow-hidden flex' },
+                    React.createElement('div', { className: 'bg-teal-600 h-full', style: { width: `${totalTarget > 0 ? (p1Total / totalTarget) * 100 : 0}%` } }),
+                    React.createElement('div', { className: 'bg-purple-600 h-full', style: { width: `${totalTarget > 0 ? (p2Total / totalTarget) * 100 : 0}%` } })
+                  )
+                )
+              )
+            ),
+
+            // GRID DE METAS
+            React.createElement('div', { className: 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5' },
+              goals.map(g => {
+                const hasTarget = Number(g.targetAmount) > 0;
+                const pct = hasTarget ? Math.min(100, Math.round((g.currentAmount / g.targetAmount) * 100)) : 0;
+                return React.createElement('div', { key: g.id, className: 'bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl p-5 flex flex-col justify-between shadow-sm' },
+                  React.createElement('div', null,
+                    React.createElement('div', { className: 'flex items-center justify-between mb-3' },
+                      React.createElement('div', { className: 'flex items-center gap-2.5' },
+                        React.createElement('div', { className: 'w-9 h-9 rounded-xl flex items-center justify-center text-white', style: { backgroundColor: g.color || '#3B82F6' } },
+                          React.createElement(Coins, { className: 'w-5 h-5' })
+                        ),
+                        React.createElement('div', null,
+                          React.createElement('h3', { className: 'font-semibold text-sm' }, g.title),
+                          React.createElement('span', { className: 'text-[11px] text-neutral-400 capitalize' }, g.category)
+                        )
+                      ),
+                      React.createElement('div', { className: 'flex items-center gap-1' },
+                        React.createElement('button', {
+                          onClick: () => setShowGoalModal(g),
+                          className: 'p-1.5 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200'
+                        }, React.createElement(Edit2, { className: 'w-3.5 h-3.5' })),
+                        React.createElement('button', {
+                          onClick: () => {
+                            if (confirm(`¿Eliminar meta ${g.title}?`)) {
+                              const updated = goals.filter(item => item.id !== g.id);
+                              setGoals(updated);
+                              saveData(updated, transactions, budgets);
+                            }
+                          },
+                          className: 'p-1.5 text-neutral-400 hover:text-rose-600'
+                        }, React.createElement(Trash2, { className: 'w-3.5 h-3.5' }))
+                      )
+                    ),
+                    React.createElement('div', { className: 'space-y-2 mb-4' },
+                      React.createElement('div', { className: 'flex items-baseline justify-between font-mono' },
+                        React.createElement('span', { className: 'text-xl font-bold' }, `$${Number(g.currentAmount).toLocaleString('es-AR')}`),
+                        hasTarget
+                          ? React.createElement('span', { className: 'text-xs text-neutral-500' }, `/ $${Number(g.targetAmount).toLocaleString('es-AR')} (${pct}%)`)
+                          : React.createElement('span', { className: 'text-xs text-amber-500 font-sans' }, '(Objetivo sin definir)')
+                      ),
+                      React.createElement('div', { className: 'w-full h-2.5 bg-neutral-100 dark:bg-neutral-800 rounded-full overflow-hidden flex' },
+                        React.createElement('div', { className: 'bg-teal-600 h-full', style: { width: `${hasTarget ? (g.p1Saved / g.targetAmount) * 100 : 0}%` } }),
+                        React.createElement('div', { className: 'bg-purple-600 h-full', style: { width: `${hasTarget ? (g.p2Saved / g.targetAmount) * 100 : 0}%` } })
+                      ),
+                      React.createElement('div', { className: 'flex justify-between text-[11px] text-neutral-500 pt-1' },
+                        React.createElement('span', null, `${partner1}: $${Number(g.p1Saved).toLocaleString('es-AR')}`),
+                        React.createElement('span', null, `${partner2}: $${Number(g.p2Saved).toLocaleString('es-AR')}`)
+                      )
+                    )
+                  ),
+                  React.createElement('button', {
+                    onClick: () => setShowDepositModal(g),
+                    className: 'w-full py-2 text-xs font-semibold text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-950/60 rounded-xl hover:bg-teal-100 flex items-center justify-center gap-1.5 transition-colors'
+                  }, React.createElement(Coins, { className: 'w-3.5 h-3.5' }), 'Aportar a esta meta')
+                );
+              })
+            )
+          ),
+
+          // TAB GRAFICOS & BALANCE
+          activeTab === 'graficos' && React.createElement('div', { className: 'space-y-6' },
+            React.createElement('div', { className: 'bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl p-6' },
+              React.createElement('h3', { className: 'text-lg font-bold mb-4' }, 'Balance y Compensación 50/50'),
+              React.createElement('div', { className: 'grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs' },
+                React.createElement('div', { className: 'p-4 bg-teal-50 dark:bg-teal-950/40 rounded-xl' },
+                  React.createElement('span', { className: 'text-teal-800 dark:text-teal-300 block mb-1' }, `Aportes de ${partner1}`),
+                  React.createElement('span', { className: 'text-xl font-bold font-mono text-teal-900 dark:text-teal-100' }, `$${p1Total.toLocaleString('es-AR')}`)
+                ),
+                React.createElement('div', { className: 'p-4 bg-purple-50 dark:bg-purple-950/40 rounded-xl' },
+                  React.createElement('span', { className: 'text-purple-800 dark:text-purple-300 block mb-1' }, `Aportes de ${partner2}`),
+                  React.createElement('span', { className: 'text-xl font-bold font-mono text-purple-900 dark:text-purple-100' }, `$${p2Total.toLocaleString('es-AR')}`)
+                ),
+                React.createElement('div', { className: 'p-4 bg-neutral-100 dark:bg-neutral-800 rounded-xl flex flex-col justify-center' },
+                  React.createElement('span', { className: 'text-neutral-500 block mb-1' }, 'Estado de Cuentas'),
+                  React.createElement('span', { className: 'font-semibold' },
+                    p1Total === p2Total ? '¡Están perfectamente equilibrados!' :
+                    p1Total > p2Total ? `${partner2} le compensa $${((p1Total - p2Total)/2).toLocaleString('es-AR')} a ${partner1}` :
+                    `${partner1} le compensa $${((p2Total - p1Total)/2).toLocaleString('es-AR')} a ${partner2}`
+                  )
+                )
+              )
+            )
+          ),
+
+          // TAB PRESUPUESTOS
+          activeTab === 'presupuestos' && React.createElement('div', { className: 'space-y-6' },
+            React.createElement('div', { className: 'bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl p-6' },
+              React.createElement('h3', { className: 'text-lg font-bold mb-4' }, 'Presupuestos Mensuales & Alertas de Límite (80%)'),
+              React.createElement('div', { className: 'grid grid-cols-1 md:grid-cols-3 gap-4' },
+                budgets.map((b, idx) => {
+                  const hasLim = b.limit > 0;
+                  const ratio = hasLim ? b.spent / b.limit : 0;
+                  const pct = Math.round(ratio * 100);
+                  const isWarn = hasLim && ratio >= 0.8;
+                  return React.createElement('div', { key: b.category, className: `p-4 rounded-xl border ${isWarn ? 'border-amber-300 bg-amber-50/20' : 'border-neutral-200 dark:border-neutral-800'}` },
+                    React.createElement('div', { className: 'flex justify-between items-center mb-2' },
+                      React.createElement('h4', { className: 'font-semibold text-xs' }, b.category),
+                      React.createElement('button', {
+                        onClick: () => {
+                          const nuevo = prompt(`Fijar límite mensual para ${b.category}:`, b.limit);
+                          if (nuevo !== null) {
+                            const updated = [...budgets];
+                            updated[idx].limit = parseFloat(nuevo) || 0;
+                            setBudgets(updated);
+                            saveData(goals, transactions, updated);
+                          }
+                        },
+                        className: 'text-neutral-400 hover:text-teal-600'
+                      }, React.createElement(Edit2, { className: 'w-3 h-3' }))
+                    ),
+                    React.createElement('div', { className: 'font-mono text-base font-bold' }, `$${b.spent.toLocaleString('es-AR')}`),
+                    React.createElement('div', { className: 'text-[11px] text-neutral-400 mb-2' }, hasLim ? `Límite: $${b.limit.toLocaleString('es-AR')} (${pct}%)` : 'Sin límite asignado'),
+                    React.createElement('div', { className: 'w-full h-1.5 bg-neutral-100 dark:bg-neutral-800 rounded-full overflow-hidden' },
+                      React.createElement('div', { className: `h-full ${ratio >= 1 ? 'bg-rose-500' : isWarn ? 'bg-amber-500' : 'bg-teal-500'}`, style: { width: `${hasLim ? Math.min(100, pct) : 0}%` } })
+                    )
+                  );
+                })
+              )
+            )
+          ),
+
+          // TAB MOVIMIENTOS
+          activeTab === 'movimientos' && React.createElement('div', { className: 'bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl p-6' },
+            React.createElement('div', { className: 'flex justify-between items-center mb-4' },
+              React.createElement('h3', { className: 'text-lg font-bold' }, 'Historial de Movimientos'),
+              React.createElement('span', { className: 'text-xs text-neutral-400' }, `${transactions.length} registros`)
+            ),
+            transactions.length === 0
+              ? React.createElement('div', { className: 'py-8 text-center text-xs text-neutral-400' }, 'No hay movimientos registrados todavía.')
+              : React.createElement('div', { className: 'divide-y divide-neutral-100 dark:divide-neutral-800' },
+                  transactions.map(t => React.createElement('div', { key: t.id, className: 'py-2.5 flex justify-between items-center text-xs' },
+                    React.createElement('div', null,
+                      React.createElement('span', { className: 'font-semibold block text-neutral-900 dark:text-neutral-100' }, t.title),
+                      React.createElement('span', { className: 'text-[10px] text-neutral-400' }, `${t.date} · Pagado por ${t.payer}`)
+                    ),
+                    React.createElement('span', { className: 'font-mono font-bold text-teal-600' }, `+$${t.amount.toLocaleString('es-AR')}`)
+                  ))
+                )
+          )
+        ),
+
+        // MODAL PLANILLA DE METAS (EXCEL TABLE)
+        showSpreadsheet && React.createElement('div', { className: 'fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4' },
+          React.createElement('div', { className: 'bg-white dark:bg-neutral-900 rounded-2xl max-w-4xl w-full p-6 shadow-2xl relative max-h-[85vh] flex flex-col' },
+            React.createElement('button', { onClick: () => setShowSpreadsheet(false), className: 'absolute top-4 right-4 p-1.5' }, React.createElement(X, { className: 'w-4 h-4' })),
+            React.createElement('h3', { className: 'text-base font-bold mb-1' }, 'Planilla de Carga de Metas'),
+            React.createElement('p', { className: 'text-xs text-neutral-500 mb-4' }, 'Rellenen aquí sus metas, montos objetivos y aportes de una sola vez:'),
+            React.createElement('div', { className: 'flex-1 overflow-auto border border-neutral-200 dark:border-neutral-800 rounded-xl mb-4' },
+              React.createElement('table', { className: 'w-full text-xs text-left' },
+                React.createElement('thead', { className: 'bg-neutral-50 dark:bg-neutral-800 font-semibold border-b border-neutral-200 dark:border-neutral-800' },
+                  React.createElement('tr', null,
+                    React.createElement('th', { className: 'p-2.5' }, 'Nombre de la Meta'),
+                    React.createElement('th', { className: 'p-2.5' }, 'Monto Objetivo ($)'),
+                    React.createElement('th', { className: 'p-2.5' }, `Aporte ${partner1} ($)`),
+                    React.createElement('th', { className: 'p-2.5' }, `Aporte ${partner2} ($)`),
+                    React.createElement('th', { className: 'p-2.5' }, 'Fecha Límite'),
+                    React.createElement('th', { className: 'p-2.5 text-center' }, 'Acción')
+                  )
+                ),
+                React.createElement('tbody', { className: 'divide-y divide-neutral-100 dark:divide-neutral-800' },
+                  goals.map((g, idx) => React.createElement('tr', { key: g.id },
+                    React.createElement('td', { className: 'p-2' },
+                      React.createElement('input', {
+                        value: g.title,
+                        onChange: e => {
+                          const copy = [...goals];
+                          copy[idx].title = e.target.value;
+                          setGoals(copy);
+                        },
+                        className: 'w-full px-2 py-1 bg-neutral-50 dark:bg-neutral-800 border rounded'
+                      })
+                    ),
+                    React.createElement('td', { className: 'p-2' },
+                      React.createElement('input', {
+                        type: 'number',
+                        value: g.targetAmount || '',
+                        placeholder: '$0',
+                        onChange: e => {
+                          const copy = [...goals];
+                          copy[idx].targetAmount = parseFloat(e.target.value) || 0;
+                          setGoals(copy);
+                        },
+                        className: 'w-full px-2 py-1 font-mono bg-neutral-50 dark:bg-neutral-800 border rounded'
+                      })
+                    ),
+                    React.createElement('td', { className: 'p-2' },
+                      React.createElement('input', {
+                        type: 'number',
+                        value: g.p1Saved || '',
+                        placeholder: '$0',
+                        onChange: e => {
+                          const copy = [...goals];
+                          const p1 = parseFloat(e.target.value) || 0;
+                          copy[idx].p1Saved = p1;
+                          copy[idx].currentAmount = p1 + (copy[idx].p2Saved || 0);
+                          setGoals(copy);
+                        },
+                        className: 'w-full px-2 py-1 font-mono bg-neutral-50 dark:bg-neutral-800 border rounded text-teal-600'
+                      })
+                    ),
+                    React.createElement('td', { className: 'p-2' },
+                      React.createElement('input', {
+                        type: 'number',
+                        value: g.p2Saved || '',
+                        placeholder: '$0',
+                        onChange: e => {
+                          const copy = [...goals];
+                          const p2 = parseFloat(e.target.value) || 0;
+                          copy[idx].p2Saved = p2;
+                          copy[idx].currentAmount = (copy[idx].p1Saved || 0) + p2;
+                          setGoals(copy);
+                        },
+                        className: 'w-full px-2 py-1 font-mono bg-neutral-50 dark:bg-neutral-800 border rounded text-purple-600'
+                      })
+                    ),
+                    React.createElement('td', { className: 'p-2' },
+                      React.createElement('input', {
+                        type: 'date',
+                        value: g.deadline,
+                        onChange: e => {
+                          const copy = [...goals];
+                          copy[idx].deadline = e.target.value;
+                          setGoals(copy);
+                        },
+                        className: 'w-full px-2 py-1 bg-neutral-50 dark:bg-neutral-800 border rounded'
+                      })
+                    ),
+                    React.createElement('td', { className: 'p-2 text-center' },
+                      React.createElement('button', {
+                        onClick: () => {
+                          const copy = goals.filter((_, i) => i !== idx);
+                          setGoals(copy);
+                        },
+                        className: 'text-neutral-400 hover:text-rose-600'
+                      }, React.createElement(Trash2, { className: 'w-3.5 h-3.5' }))
+                    )
+                  ))
+                )
+              )
+            ),
+            React.createElement('div', { className: 'flex justify-between items-center' },
+              React.createElement('button', {
+                onClick: () => setGoals([...goals, { id: Date.now().toString(), title: 'Nueva Meta', category: 'otro', targetAmount: 0, currentAmount: 0, p1Saved: 0, p2Saved: 0, monthlyTarget: 0, deadline: '2026-12-31', color: '#14B8A6' }]),
+                className: 'px-3 py-1.5 text-xs text-teal-600 bg-teal-50 dark:bg-teal-950/40 rounded-lg flex items-center gap-1 font-semibold'
+              }, React.createElement(Plus, { className: 'w-3.5 h-3.5' }), 'Agregar Fila'),
+              React.createElement('button', {
+                onClick: () => {
+                  saveData(goals, transactions, budgets);
+                  setShowSpreadsheet(false);
+                },
+                className: 'px-4 py-2 text-xs font-semibold text-white bg-teal-600 hover:bg-teal-700 rounded-xl shadow'
+              }, 'Guardar Planilla')
+            )
+          )
+        ),
+
+        // MODAL DE APORTE RÁPIDO
+        showDepositModal && React.createElement('div', { className: 'fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4' },
+          React.createElement('div', { className: 'bg-white dark:bg-neutral-900 rounded-2xl max-w-sm w-full p-6 shadow-xl relative' },
+            React.createElement('button', { onClick: () => setShowDepositModal(null), className: 'absolute top-4 right-4 p-1.5' }, React.createElement(X, { className: 'w-4 h-4' })),
+            React.createElement('h3', { className: 'text-base font-bold mb-1' }, 'Aportar a Meta'),
+            React.createElement('p', { className: 'text-xs text-neutral-500 mb-4' }, showDepositModal.title),
+            React.createElement('form', {
+              onSubmit: e => {
+                e.preventDefault();
+                const form = e.target;
+                handleDeposit(showDepositModal.id, form.amount.value, form.payer.value, form.note.value);
+              },
+              className: 'space-y-4'
+            },
+              React.createElement('div', null,
+                React.createElement('label', { className: 'block text-xs font-medium mb-1' }, 'Monto a Aportar ($)'),
+                React.createElement('input', { name: 'amount', type: 'number', required: true, autoFocus: true, placeholder: '$50000', className: 'w-full px-3 py-2 text-sm font-mono border rounded-xl bg-neutral-50 dark:bg-neutral-800' })
+              ),
+              React.createElement('div', null,
+                React.createElement('label', { className: 'block text-xs font-medium mb-1' }, '¿Quién aporta?'),
+                React.createElement('select', { name: 'payer', className: 'w-full px-3 py-2 text-xs border rounded-xl bg-neutral-50 dark:bg-neutral-800' },
+                  React.createElement('option', { value: partner1 }, partner1),
+                  React.createElement('option', { value: partner2 }, partner2),
+                  React.createElement('option', { value: '50/50' }, '50/50 Ambos')
+                )
+              ),
+              React.createElement('div', null,
+                React.createElement('label', { className: 'block text-xs font-medium mb-1' }, 'Nota (Opcional)'),
+                React.createElement('input', { name: 'note', placeholder: 'Ej: Ahorro quincenal', className: 'w-full px-3 py-2 text-xs border rounded-xl bg-neutral-50 dark:bg-neutral-800' })
+              ),
+              React.createElement('button', { type: 'submit', className: 'w-full py-2 text-xs font-semibold text-white bg-teal-600 rounded-xl shadow' }, 'Confirmar Aporte')
+            )
+          )
+        ),
+
+        // MODAL EDITAR / CREAR META
+        showGoalModal && React.createElement('div', { className: 'fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4' },
+          React.createElement('div', { className: 'bg-white dark:bg-neutral-900 rounded-2xl max-w-sm w-full p-6 shadow-xl relative' },
+            React.createElement('button', { onClick: () => setShowGoalModal(null), className: 'absolute top-4 right-4 p-1.5' }, React.createElement(X, { className: 'w-4 h-4' })),
+            React.createElement('h3', { className: 'text-base font-bold mb-4' }, showGoalModal.id ? 'Editar Meta' : 'Nueva Meta Propia'),
+            React.createElement('form', {
+              onSubmit: e => {
+                e.preventDefault();
+                const form = e.target;
+                const newGoal = {
+                  ...showGoalModal,
+                  id: showGoalModal.id || Date.now().toString(),
+                  title: form.title.value,
+                  targetAmount: parseFloat(form.targetAmount.value) || 0,
+                  monthlyTarget: parseFloat(form.monthlyTarget.value) || 0,
+                  deadline: form.deadline.value
+                };
+                const updated = showGoalModal.id ? goals.map(g => g.id === newGoal.id ? newGoal : g) : [...goals, newGoal];
+                setGoals(updated);
+                saveData(updated, transactions, budgets);
+                setShowGoalModal(null);
+              },
+              className: 'space-y-3'
+            },
+              React.createElement('div', null,
+                React.createElement('label', { className: 'block text-xs font-medium mb-1' }, 'Nombre de la Meta'),
+                React.createElement('input', { name: 'title', defaultValue: showGoalModal.title, required: true, className: 'w-full px-3 py-1.5 text-xs border rounded-xl bg-neutral-50 dark:bg-neutral-800' })
+              ),
+              React.createElement('div', null,
+                React.createElement('label', { className: 'block text-xs font-medium mb-1' }, 'Monto Objetivo ($)'),
+                React.createElement('input', { name: 'targetAmount', type: 'number', defaultValue: showGoalModal.targetAmount || '', required: true, className: 'w-full px-3 py-1.5 text-xs font-mono border rounded-xl bg-neutral-50 dark:bg-neutral-800' })
+              ),
+              React.createElement('div', null,
+                React.createElement('label', { className: 'block text-xs font-medium mb-1' }, 'Aporte Mensual Meta ($)'),
+                React.createElement('input', { name: 'monthlyTarget', type: 'number', defaultValue: showGoalModal.monthlyTarget || '', className: 'w-full px-3 py-1.5 text-xs font-mono border rounded-xl bg-neutral-50 dark:bg-neutral-800' })
+              ),
+              React.createElement('div', null,
+                React.createElement('label', { className: 'block text-xs font-medium mb-1' }, 'Fecha Límite'),
+                React.createElement('input', { name: 'deadline', type: 'date', defaultValue: showGoalModal.deadline || '2026-12-31', className: 'w-full px-3 py-1.5 text-xs border rounded-xl bg-neutral-50 dark:bg-neutral-800' })
+              ),
+              React.createElement('button', { type: 'submit', className: 'w-full py-2 text-xs font-semibold text-white bg-teal-600 rounded-xl shadow mt-2' }, 'Guardar Meta')
+            )
+          )
+        )
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
+  </script>
+</body>
+</html>
