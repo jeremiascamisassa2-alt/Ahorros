@@ -1,125 +1,20 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ahorro Vacaciones 🚣‍♂️</title>
-    <style>
-        :root { --primary: #2ecc71; --secondary: #3498db; --bg: #f4f7f6; --text: #2c3e50; }
-        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); display: flex; justify-content: center; padding: 20px; margin: 0; color: var(--text); }
-        .container { background: white; border-radius: 20px; padding: 25px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); max-width: 400px; width: 100%; text-align: center; }
-        h1 { font-size: 22px; margin-bottom: 5px; color: var(--secondary); }
-        .chanchito { font-size: 60px; margin: 15px 0; }
-        .progress-bar { background: #eee; height: 20px; border-radius: 10px; overflow: hidden; margin: 10px 0; border: 1px solid #ddd; }
-        .progress { background: linear-gradient(90deg, var(--primary), var(--secondary)); height: 100%; width: 0%; transition: 1s ease-in-out; }
-        .stats { background: #f9f9f9; padding: 15px; border-radius: 15px; text-align: left; margin: 20px 0; border-left: 5px solid var(--secondary); }
-        .stats p { margin: 8px 0; font-size: 15px; }
-        .meta-diaria-box { background: #e8f4fd; padding: 10px; border-radius: 10px; text-align: center; margin-top: 10px; }
-        .meta-diaria { color: var(--secondary); font-size: 1.6em; font-weight: bold; display: block; }
-        .input-group { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; }
-        input { padding: 12px; border: 2px solid #ddd; border-radius: 10px; font-size: 16px; outline: none; text-align: center; }
-        input:focus { border-color: var(--secondary); }
-        button { background: var(--secondary); color: white; border: none; padding: 14px; border-radius: 10px; font-weight: bold; cursor: pointer; font-size: 16px; }
-        button:active { transform: scale(0.98); }
-        .history { margin-top: 25px; text-align: left; max-height: 200px; overflow-y: auto; border-top: 1px solid #eee; padding-top: 15px; }
-        .history-item { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #fafafa; font-size: 14px; }
-        .monto-historial { font-weight: bold; color: var(--primary); }
-    </style>
-</head>
-<body>
-
-<div class="container">
-    <h1>Ahorro Vacaciones 🚣‍♂️</h1>
-    <div class="chanchito">🐷</div>
-    
-    <div class="progress-bar"><div class="progress" id="progressBar"></div></div>
-    <p style="font-size: 14px; margin-bottom: 20px;"><b><span id="porcText">0</span>%</b> del objetivo</p>
-    
-    <div class="stats">
-        <p>🎯 Meta total (2 personas): <b>$301.000</b></p>
-        <p>💰 Llevamos ahorrado: <b id="ahorradoText">$0</b></p>
-        <p>⏳ Días hasta el viaje: <b id="diasText">0</b></p>
-        <div class="meta-diaria-box">
-            <small>FALTA POR DÍA:</small>
-            <span class="meta-diaria">$<span id="metaDiariaText">0</span></span>
-        </div>
-    </div>
-
-    <div class="input-group">
-        <input type="number" id="montoInput" placeholder="Monto a sumar ($)" inputmode="numeric">
-        <button onclick="guardar()">Guardar en el Chanchito</button>
-    </div>
-
-    <div class="history" id="historial">
-        </div>
-</div>
-
-<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-  import { getDatabase, ref, push, onValue } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
-
-  // REEMPLAZA CON TUS DATOS DE FIREBASE
-  const firebaseConfig = {
-    apiKey: "TU_API_KEY",
-    authDomain: "chanchito-10e8e.firebaseapp.com",
-    databaseURL: "https://chanchito-10e8e-default-rtdb.firebaseio.com",
-    projectId: "chanchito-10e8e",
-    storageBucket: "chanchito-10e8e.appspot.com",
-    messagingSenderId: "TU_ID",
-    appId: "TU_APP_ID"
-  };
-
-  const app = initializeApp(firebaseConfig);
-  const db = getDatabase(app);
-  const ahorrosRef = ref(db, 'ahorros');
-
-  const META_TOTAL = 301000;
-  const FECHA_VIAJE = new Date('2026-04-03T00:00:00');
-
-  onValue(ahorrosRef, (snapshot) => {
-    const data = snapshot.val();
-    let total = 0;
-    let html = "<b>Historial de ahorros:</b><br>";
-    
-    if (data) {
-        const items = Object.values(data).reverse();
-        items.forEach(item => {
-            total += Number(item.monto);
-            html += `
-                <div class="history-item">
-                    <span>${item.fecha}</span>
-                    <span class="monto-historial">+$${item.monto.toLocaleString()}</span>
-                </div>`;
-        });
-    }
-
-    const hoy = new Date();
-    const diff = FECHA_VIAJE - hoy;
-    const dias = Math.max(1, Math.ceil(diff / (1000 * 60 * 60 * 24)));
-    const falta = Math.max(0, META_TOTAL - total);
-    const diaria = falta / dias;
-    const porc = (total / META_TOTAL) * 100;
-
-    document.getElementById('ahorradoText').innerText = `$${total.toLocaleString()}`;
-    document.getElementById('diasText').innerText = dias;
-    document.getElementById('metaDiariaText').innerText = Math.round(diaria).toLocaleString();
-    document.getElementById('progressBar').style.width = Math.min(100, porc) + "%";
-    document.getElementById('porcText').innerText = porc.toFixed(1);
-    document.getElementById('historial').innerHTML = html;
-  });
-
-  window.guardar = function() {
-    const input = document.getElementById('montoInput');
-    const monto = input.value;
-    
-    if (monto > 0) {
-        push(ahorrosRef, {
-            monto: parseFloat(monto),
-            fecha: new Date().toLocaleDateString('es-AR')
-        });
-        input.value = "";
-    }
-  }
-</script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DúoAhorro - Finanzas y Metas en Pareja</title>
+    <meta name="description" content="Plataforma financiera colaborativa para parejas con seguimiento visual de metas (viajes, horizonte, casa, ropa, emergencias), gráficos comparativos, alertas presupuestarias, modo offline y exportación a PDF y Excel." />
+    <meta property="og:title" content="DúoAhorro - Finanzas y Metas en Pareja" />
+    <meta property="og:description" content="Plataforma financiera colaborativa para parejas con seguimiento visual de metas (viajes, horizonte, casa, ropa, emergencias), gráficos comparativos, alertas presupuestarias, modo offline y exportación a PDF y Excel." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  </head>
+  <body class="bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 antialiased font-sans">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
 </html>
